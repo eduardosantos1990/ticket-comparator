@@ -1,0 +1,39 @@
+<script>
+async function loadTickets() {
+    const response = await fetch("https://ticket-comparator.onrender.com/api/tickets");
+    const tickets = await response.json();
+    renderTable(tickets);
+}
+
+function renderTable(data) {
+    const table = document.getElementById("priceTable");
+    table.innerHTML = "";
+
+    if (!data.length) {
+        table.innerHTML = "<tr><td colspan='5'>Nenhum resultado encontrado</td></tr>";
+        return;
+    }
+
+    const minPrice = Math.min(...data.map(t => t.price));
+
+    data.forEach(ticket => {
+        const row = document.createElement("tr");
+
+        if(ticket.price === minPrice){
+            row.style.background = "#e8f5e9";
+        }
+
+        row.innerHTML = `
+            <td>${ticket.park}</td>
+            <td>${ticket.title}</td>
+            <td>${ticket.vendor}</td>
+            <td>$ ${ticket.price}</td>
+            <td><a href="${ticket.url}" target="_blank">Comprar</a></td>
+        `;
+
+        table.appendChild(row);
+    });
+}
+
+loadTickets();
+</script>
