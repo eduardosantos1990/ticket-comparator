@@ -1,6 +1,6 @@
 <script>
 async function loadTickets() {
-    const response = await fetch("https://ticket-comparator-n2qn.vercel.app.onrender.com/api/tickets");
+    const response = await fetch("https://ticket-comparator.onrender.com/api/tickets");
     const tickets = await response.json();
     renderTable(tickets);
 }
