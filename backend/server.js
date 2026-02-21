@@ -10,15 +10,30 @@ app.use(cors());
 
 const PORT = process.env.PORT || 10000;
 
+let cachedRate = null;
+let lastRateFetch = 0;
+
 app.get("/api/tickets", async (req, res) => {
+  const date = req.query.date;
+  const currency = req.query.currency || "USD";
+
   try {
     const [viator, gyg, tiqets] = await Promise.all([
-      fetchViator(),
-      fetchGetYourGuide(),
-      fetchTiqets()
+      fetchViator(date),
+      fetchGetYourGuide(date),
+      fetchTiqets(date)
     ]);
 
-    const combined = [...viator, ...gyg, ...tiqets];
+    let combined = [...viator, ...gyg, ...tiqets];
+
+    if (currency === "BRL") {
+      const rate = await getUSDtoBRL();
+      combined = combined.map(item => ({
+        ...item,
+        price: (item.price * rate).toFixed(2),
+        currency: "BRL"
+      }));
+    }
 
     const grouped = groupByPark(combined);
 
@@ -30,7 +45,24 @@ app.get("/api/tickets", async (req, res) => {
   }
 });
 
-async function fetchViator() {
+async function getUSDtoBRL() {
+  const now = Date.now();
+
+  if (cachedRate && (now - lastRateFetch < 3600000)) {
+    return cachedRate;
+  }
+
+  const response = await axios.get(
+    "https://api.exchangerate-api.com/v4/latest/USD"
+  );
+
+  cachedRate = response.data.rates.BRL;
+  lastRateFetch = now;
+
+  return cachedRate;
+}
+
+async function fetchViator(date) {
   try {
     const response = await axios.get(
       "https://api.viator.com/partner/products/search",
@@ -41,7 +73,8 @@ async function fetchViator() {
         },
         params: {
           searchTerm: "Disney Universal SeaWorld Busch Gardens Orlando",
-          currencyCode: "USD"
+          currencyCode: "USD",
+          startDate: date
         }
       }
     );
@@ -51,7 +84,8 @@ async function fetchViator() {
       title: item.title,
       vendor: "Viator",
       price: item.pricing?.summary?.fromPrice || 0,
-      url: item.productUrl
+      url: item.productUrl,
+      currency: "USD"
     }));
 
   } catch {
@@ -59,7 +93,7 @@ async function fetchViator() {
   }
 }
 
-async function fetchGetYourGuide() {
+async function fetchGetYourGuide(date) {
   try {
     const response = await axios.get(
       "https://api.getyourguide.com/v1/products",
@@ -69,7 +103,8 @@ async function fetchGetYourGuide() {
         },
         params: {
           query: "Orlando theme parks",
-          currency: "USD"
+          currency: "USD",
+          date_from: date
         }
       }
     );
@@ -79,7 +114,8 @@ async function fetchGetYourGuide() {
       title: item.title,
       vendor: "GetYourGuide",
       price: item.price?.amount || 0,
-      url: item.url
+      url: item.url,
+      currency: "USD"
     }));
 
   } catch {
@@ -87,7 +123,7 @@ async function fetchGetYourGuide() {
   }
 }
 
-async function fetchTiqets() {
+async function fetchTiqets(date) {
   try {
     const response = await axios.get(
       "https://api.tiqets.com/v2/products",
@@ -97,7 +133,8 @@ async function fetchTiqets() {
         },
         params: {
           city: "Orlando",
-          currency: "USD"
+          currency: "USD",
+          visit_date: date
         }
       }
     );
@@ -107,7 +144,8 @@ async function fetchTiqets() {
       title: item.title,
       vendor: "Tiqets",
       price: item.price || 0,
-      url: item.url
+      url: item.url,
+      currency: "USD"
     }));
 
   } catch {
@@ -120,17 +158,15 @@ function groupByPark(data) {
 
   data.forEach(item => {
     if (!item.park) return;
-
     if (!parks[item.park]) parks[item.park] = [];
-
     parks[item.park].push(item);
   });
 
   Object.keys(parks).forEach(park => {
-    const min = Math.min(...parks[park].map(p => p.price));
+    const min = Math.min(...parks[park].map(p => parseFloat(p.price)));
     parks[park] = parks[park].map(p => ({
       ...p,
-      isBest: p.price === min
+      isBest: parseFloat(p.price) === min
     }));
   });
 
@@ -145,4 +181,4 @@ function identifyPark(title = "") {
   return null;
 }
 
-app.listen(PORT, () => console.log("API rodando 🚀"));
+app.listen(PORT, () => console.log("API 3.0 rodando 🚀"));
